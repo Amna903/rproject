@@ -1,0 +1,245 @@
+---
+title: "ECO 3323 Project 2: Principles of Money, Banking, and Credit"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(tidyverse)
+library(data.table)
+library(GGally)
+library(cowplot)
+library(scales)
+library(janitor)
+library(zoo)
+library(quantmod)
+library(lubridate)
+library(tibble)
+```
+
+# Part I: Sovereign Risk & Macroeconomic Fundamentals
+
+## Load Data
+
+```{r}
+load("data_risk.RData")
+data_risk <- as_tibble(data_risk)
+glimpse(data_risk)
+summary(data_risk)
+```
+
+## Exercise 1: Cross-Section by Rating (2024)
+
+```{r}
+data_2024 <- data_risk %>% filter(year == 2024)
+# GDP per Capita
+ggplot(data_2024, aes(x = lt_fc_rating, y = gdp_pc)) +
+  geom_boxplot() +
+  labs(title = "GDP per Capita vs LT FC Rating (2024)",
+       x = "Long-Term FC Rating", y = "GDP per Capita (USD)") +
+  theme_minimal()
+```
+
+**Interpretation:** Higher-rated countries tend to have higher GDP per capita. Some overlap exists between mid-tier ratings. Outliers in lower ratings show very low GDP.
+
+```{r}
+# CPI Growth
+ggplot(data_2024, aes(x = lt_fc_rating, y = cpi_gr)) +
+  geom_boxplot() +
+  labs(title = "CPI Growth vs LT FC Rating (2024)",
+       x = "Long-Term FC Rating", y = "CPI Growth (%)") +
+  theme_minimal()
+```
+
+**Interpretation:** Countries with better ratings generally show moderate and stable CPI growth; low-rated countries show more volatility and higher inflation outliers.
+
+```{r}
+# Unemployment Rate
+ggplot(data_2024, aes(x = lt_fc_rating, y = unemp_rate)) +
+  geom_boxplot() +
+  labs(title = "Unemployment Rate vs LT FC Rating (2024)",
+       x = "Long-Term FC Rating", y = "Unemployment Rate (%)") +
+  theme_minimal()
+```
+
+**Interpretation:** Lower unemployment aligns with better ratings, though some outliers in mid-ratings indicate overlap.
+
+```{r}
+# Government Balance
+ggplot(data_2024, aes(x = lt_fc_rating, y = gg_bal_gdp)) +
+  geom_boxplot() +
+  labs(title = "Government Balance (% of GDP) vs LT FC Rating (2024)",
+       x = "Long-Term FC Rating", y = "Government Balance (% of GDP)") +
+  theme_minimal()
+```
+
+**Interpretation:** Positive fiscal balances are more common in higher-rated countries, with lower ratings showing deficits and outliers.
+
+## Exercise 2: Simple Relationships
+
+```{r}
+# Debt/Revenues vs GDP per Capita
+ggplot(data_2024, aes(x = debt_rev, y = gdp_pc, color = lt_fc_rating)) +
+  geom_point() +
+  labs(title = "Debt/Revenues vs GDP per Capita (2024)",
+       x = "Debt / Revenues (%)", y = "GDP per Capita (USD)", color = "Rating") +
+  theme_minimal()
+```
+
+**Interpretation:** There is a negative relationship: higher debt/revenues correlate with lower GDP per capita. Higher ratings cluster in low debt/high GDP areas.
+
+```{r}
+# Unemployment vs CPI Growth
+ggplot(data_2024, aes(x = unemp_rate, y = cpi_gr, color = lt_fc_rating)) +
+  geom_point() +
+  labs(title = "Unemployment vs CPI Growth (2024)",
+       x = "Unemployment Rate (%)", y = "CPI Growth (%)", color = "Rating") +
+  theme_minimal()
+```
+
+**Interpretation:** Weak positive correlation between unemployment and CPI growth; lower-rated countries cluster in high unemployment and high/instable inflation.
+
+## Exercise 3: Median Trends by Rating
+
+```{r}
+median_trends <- data_risk %>%
+  group_by(year, lt_fc_rating) %>%
+  summarize(
+    median_gdp_pc = median(gdp_pc, na.rm = TRUE),
+    median_cpi_gr = median(cpi_gr, na.rm = TRUE)
+  )
+# Median GDP per capita
+ggplot(median_trends, aes(x = year, y = median_gdp_pc, color = lt_fc_rating)) +
+  geom_line() +
+  labs(title = "Median GDP per Capita Over Time by Rating",
+       x = "Year", y = "Median GDP per Capita (USD)", color = "Rating") +
+  theme_minimal()
+# Median CPI Growth
+ggplot(median_trends, aes(x = year, y = median_cpi_gr, color = lt_fc_rating)) +
+  geom_line() +
+  labs(title = "Median CPI Growth Over Time by Rating",
+       x = "Year", y = "Median CPI Growth (%)", color = "Rating") +
+  theme_minimal()
+```
+
+**Interpretation:** High-rated countries show sustained GDP growth and stable CPI. Lower ratings exhibit deteriorations around global crises like 2020, with volatile CPI.
+
+## Exercise 4: Correlation Paths
+
+```{r}
+correlation_trends <- data_risk %>%
+  group_by(year) %>%
+  summarize(
+    corr_rating_gdp_pc = cor(as.numeric(lt_fc_rating), gdp_pc, use = "complete.obs"),
+    corr_rating_debt_rev = cor(as.numeric(lt_fc_rating), debt_rev, use = "complete.obs"),
+    corr_rating_cpi_gr = cor(as.numeric(lt_fc_rating), cpi_gr, use = "complete.obs")
+  )
+# Plot correlations
+ggplot(correlation_trends, aes(x = year)) +
+  geom_line(aes(y = corr_rating_gdp_pc, color = "GDP per Capita")) +
+  geom_line(aes(y = corr_rating_debt_rev, color = "Debt/Revenues")) +
+  geom_line(aes(y = corr_rating_cpi_gr, color = "CPI Growth")) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Correlation Between LT FC Rating and Macroeconomic Variables Over Time",
+       x = "Year", y = "Correlation Coefficient", color = "Variable") +
+  theme_minimal()
+```
+
+**Interpretation:** Macro-rating linkages are stable but weaken post-2015 for debt/revenues (less negative). CPI correlation strengthens negatively in crises, indicating regime shift around 2020 where inflation impacts ratings more.
+
+## Ratings Over Time
+
+```{r}
+average_rating <- data_risk %>%
+  group_by(year) %>%
+  summarize(avg_rating = mean(as.numeric(lt_fc_rating), na.rm = TRUE))
+
+ggplot(average_rating, aes(x = year, y = avg_rating)) +
+  geom_line() +
+  labs(title = "Average Numeric Rating by Year",
+       x = "Year", y = "Average Rating (Numeric)") +
+  theme_minimal()
+```
+
+**Macro take:** The average sovereign rating improved steadily from 2010 to 2019, reflecting global recovery post-financial crisis. A sharp deterioration occurred in 2020 due to the COVID-19 pandemic's fiscal impacts, with partial recovery thereafter, highlighting vulnerability to macroeconomic shocks.
+
+# Part II: Multi-Asset Markets
+
+## Load Market Data
+
+```{r}
+symbols <- c("AAPL", "TSLA", "NVDA", "XLF", "^GSPC", "^N225", "BZ=F", "GC=F", "^TNX", "BTC-USD")
+prices <- map(symbols, ~ Cl(getSymbols(.x, src = "yahoo", from = "2010-01-01", to = Sys.Date(), auto.assign = FALSE))) %>%
+  reduce(merge)
+prices_df <- data.frame(date = index(prices), coredata(prices))
+colnames(prices_df) <- c("date", "AAPL", "TSLA", "NVDA", "XLF", "GSPC", "N225", "Brent", "Gold", "TNX", "BTC")
+prices_df <- prices_df %>% mutate(across(AAPL:BTC, ~ na.approx(., na.rm = FALSE))) %>% mutate(TNX = TNX / 10)
+print(nrow(prices_df))
+print(ncol(prices_df))
+```
+
+## Exercise 5: Level Plots
+
+```{r}
+# Equities
+prices_df %>% select(date, AAPL, TSLA, NVDA, XLF) %>%
+  pivot_longer(-date, names_to = "Ticker", values_to = "Price") %>%
+  ggplot(aes(x = date, y = Price, color = Ticker)) + geom_line() +
+  labs(title = "Equity Price Levels (2010–2025)", x = "Date", y = "Price") + theme_minimal()
+# Indices
+prices_df %>% select(date, GSPC, N225) %>%
+  pivot_longer(-date, names_to = "Index", values_to = "Price") %>%
+  ggplot(aes(x = date, y = Price, color = Index)) + geom_line() +
+  labs(title = "Index Levels (2010–2025)", x = "Date", y = "Price") + theme_minimal()
+# Commodities
+prices_df %>% select(date, Brent, Gold) %>%
+  pivot_longer(-date, names_to = "Commodity", values_to = "Price") %>%
+  ggplot(aes(x = date, y = Price, color = Commodity)) + geom_line() +
+  labs(title = "Commodity Levels (2010–2025)", x = "Date", y = "Price") + theme_minimal()
+# U.S. 10-Year Yield
+prices_df %>% filter(!is.na(TNX)) %>%
+  ggplot(aes(x = date, y = TNX)) + geom_line(color = "blue") +
+  labs(title = "U.S. 10-Year Yield (2010–2025)", x = "Date", y = "Yield (%)") + theme_minimal()
+# Bitcoin
+prices_df %>% filter(!is.na(BTC)) %>%
+  ggplot(aes(x = date, y = BTC)) + geom_line(color = "orange") +
+  labs(title = "Bitcoin Price (2010–2025)", x = "Date", y = "Price (USD)") + theme_minimal()
+```
+
+## Exercise 6: Normalize to 100
+
+```{r}
+prices_norm <- prices_df %>% mutate(across(AAPL:BTC, ~ . / first(na.omit(.)) * 100))
+prices_norm_long <- prices_norm %>% pivot_longer(-date, names_to = "Asset", values_to = "IndexValue")
+ggplot(prices_norm_long, aes(x = date, y = IndexValue, color = Asset)) + geom_line() +
+  labs(title = "Normalized Asset Levels (Base=100)", x = "Date", y = "Index Value") +
+  theme_minimal()
+```
+
+**Interpretation:** Bitcoin and tech equities (NVDA, TSLA) dominated since 2010, with massive growth. Commodities and indices lagged. In 2022, rising rates (TNX) coincided with equity corrections, while commodities (Brent) spiked due to geopolitical events.
+
+## Exercise 7: $100 Index Every 6 Months
+
+```{r}
+start_date <- min(prices_df$date)
+interval_dates <- seq(start_date, max(prices_df$date), by = "6 months")
+index_6mo <- prices_df %>%
+  mutate(norm_AAPL = AAPL / first(na.omit(AAPL)) * 100,
+         norm_TSLA = TSLA / first(na.omit(TSLA)) * 100,
+         norm_NVDA = NVDA / first(na.omit(NVDA)) * 100,
+         norm_XLF = XLF / first(na.omit(XLF)) * 100,
+         norm_GSPC = GSPC / first(na.omit(GSPC)) * 100,
+         norm_N225 = N225 / first(na.omit(N225)) * 100,
+         norm_Brent = Brent / first(na.omit(Brent)) * 100,
+         norm_Gold = Gold / first(na.omit(Gold)) * 100,
+         norm_TNX = TNX / first(na.omit(TNX)) * 100,
+         norm_BTC = BTC / first(na.omit(BTC)) * 100) %>%
+  filter(date %in% interval_dates) %>%
+  select(date, starts_with("norm_")) %>%
+  rename_with(~ gsub("norm_", "", .)) %>%
+  mutate(across(AAPL:BTC, ~ round(., 2)))
+index_6mo
+```
+
+**Interpretation:** Dispersion is high: BTC reaches extreme values, tech equities show strong but volatile growth, while TNX and commodities remain stable or lag. Concludes that risk assets outperformed safe havens, with episodes like 2020 COVID boosting tech and 2022 inflation aiding commodities.
